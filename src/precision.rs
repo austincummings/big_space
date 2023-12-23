@@ -1,6 +1,9 @@
 //! Contains the [`GridPrecision`] trait and its implementations.
 
-use std::{hash::Hash, ops::Add};
+use std::{
+    hash::Hash,
+    ops::{Add, Neg},
+};
 
 use bevy::reflect::Reflect;
 

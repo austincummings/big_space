@@ -13,9 +13,9 @@ impl<P: GridPrecision> Plugin for FloatingOriginDebugPlugin<P> {
     fn build(&self, app: &mut App) {
         app.add_systems(
             PostUpdate,
-            update_debug_bounds::<P>
-                .after(crate::recenter_transform_on_grid::<P>)
-                .before(crate::update_global_from_grid::<P>),
+            update_debug_bounds::<P>,
+            // .after(crate::recenter_transform_on_grid::<P>)
+            // .before(crate::update_global_from_grid::<P>),
         );
     }
 }

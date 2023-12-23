@@ -84,7 +84,7 @@
 //! up the computed translations and grid cell offsets to get a more precise result.
 
 #![allow(clippy::type_complexity)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 use bevy::{math::DVec3, prelude::*, reflect::TypePath, transform::TransformSystem};
 use propagation::propagate_transforms;
@@ -101,6 +101,9 @@ pub mod debug;
 
 #[cfg(feature = "camera")]
 pub mod camera;
+
+#[cfg(feature = "bevy_xpbd")]
+pub mod bevy_xpbd;
 
 use precision::*;
 
@@ -205,6 +208,20 @@ impl FloatingOriginSettings {
             x: pos.x.as_f64() * self.grid_edge_length as f64 + transform.translation.x as f64,
             y: pos.y.as_f64() * self.grid_edge_length as f64 + transform.translation.y as f64,
             z: pos.z.as_f64() * self.grid_edge_length as f64 + transform.translation.z as f64,
+        }
+    }
+
+    /// Compute the double precision position of an entity's translation with respect to the given
+    /// [`GridCell`].
+    pub fn relative_grid_position_f64<P: GridPrecision>(
+        &self,
+        pos: &GridCell<P>,
+        translation: DVec3,
+    ) -> DVec3 {
+        DVec3 {
+            x: pos.x.as_f64() * self.grid_edge_length as f64 + translation.x,
+            y: pos.y.as_f64() * self.grid_edge_length as f64 + translation.y,
+            z: pos.z.as_f64() * self.grid_edge_length as f64 + translation.z,
         }
     }
 

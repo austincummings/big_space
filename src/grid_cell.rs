@@ -62,6 +62,7 @@ impl<P: GridPrecision> GridCell<P> {
         z: P::ONE,
     };
 }
+
 impl<P: GridPrecision> std::ops::Add for GridCell<P> {
     type Output = GridCell<P>;
 
@@ -73,6 +74,7 @@ impl<P: GridPrecision> std::ops::Add for GridCell<P> {
         }
     }
 }
+
 impl<P: GridPrecision> std::ops::Sub for GridCell<P> {
     type Output = GridCell<P>;
 
@@ -84,6 +86,7 @@ impl<P: GridPrecision> std::ops::Sub for GridCell<P> {
         }
     }
 }
+
 impl<P: GridPrecision> std::ops::Add for &GridCell<P> {
     type Output = GridCell<P>;
 
@@ -91,6 +94,7 @@ impl<P: GridPrecision> std::ops::Add for &GridCell<P> {
         (*self).add(*rhs)
     }
 }
+
 impl<P: GridPrecision> std::ops::Sub for &GridCell<P> {
     type Output = GridCell<P>;
 
@@ -103,5 +107,12 @@ impl<P: GridPrecision> std::ops::AddAssign for GridCell<P> {
     fn add_assign(&mut self, rhs: Self) {
         use std::ops::Add;
         *self = self.add(rhs);
+    }
+}
+
+impl<P: GridPrecision> std::ops::SubAssign for GridCell<P> {
+    fn sub_assign(&mut self, rhs: Self) {
+        use std::ops::Sub;
+        *self = self.sub(rhs);
     }
 }
