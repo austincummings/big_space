@@ -426,11 +426,10 @@ fn transform_to_position(
         }
 
         {
-            // rotation.0 = (previous_transform.rotation
-            //     + (transform.rotation - previous_transform.rotation)
-            //     + (rotation.as_f32() - previous_transform.rotation))
-            //     .normalize()
-            //     .adjust_precision();
+            rotation.0 = (previous_transform.rotation
+                + (transform.rotation - previous_transform.rotation))
+                .normalize()
+                .adjust_precision();
         }
     }
 }
