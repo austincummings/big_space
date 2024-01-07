@@ -119,7 +119,7 @@ impl<P: GridPrecision> Plugin for FloatingOriginSyncPlugin<P> {
             .expect("add SubstepSchedule first");
         substep_schedule.add_systems(
             (
-                propagate_collider_transforms,
+                propagate_collider_transforms::<P>,
                 update_child_collider_position,
             )
                 .chain()
@@ -224,60 +224,60 @@ pub(crate) fn update_collider_scale(
 ///
 /// This is largely a clone of `propagate_transforms` in `bevy_transform`.
 #[allow(clippy::type_complexity)]
-pub(crate) fn propagate_collider_transforms(
-    mut root_query: Query<(Entity, Ref<Transform>, &Children), Without<Parent>>,
-    collider_query: Query<
+pub(crate) fn propagate_collider_transforms<P: GridPrecision>(
+    origin_moved: Query<(), (Changed<GridCell<P>>, With<FloatingOrigin>)>,
+    mut root_query: Query<
         (
+            Entity,
+            &Children,
             Ref<Transform>,
-            Option<&mut ColliderTransform>,
-            Option<&Children>,
+            &mut ColliderTransform,
+            Option<Ref<GridCell<P>>>,
         ),
+        Without<Parent>,
+    >,
+    transform_query: Query<
+        (Ref<Transform>, &mut ColliderTransform, Option<&Children>),
         With<Parent>,
     >,
-    parent_query: Query<(Entity, Ref<Transform>, Has<RigidBody>, Ref<Parent>)>,
+    parent_query: Query<(Entity, Ref<Parent>)>,
 ) {
-    root_query.par_iter_mut().for_each(
-        |(entity, transform,children)| {
-            for (child, child_transform, is_child_rb, parent) in parent_query.iter_many(children) {
-                assert_eq!(
-                    parent.get(), entity,
-                    "Malformed hierarchy. This probably means that your hierarchy has been improperly maintained, or contains a cycle"
+    let origin_cell_changed = !origin_moved.is_empty();
+
+    for (entity, children, transform, mut collider_transform, cell) in root_query.iter_mut() {
+        let cell_changed = cell.as_ref().filter(|cell| cell.is_changed()).is_some();
+        let transform_changed = transform.is_changed();
+
+        if transform_changed && cell.is_none() {
+            *collider_transform = ColliderTransform::from(*transform);
+        }
+
+        let changed = transform_changed || cell_changed || origin_cell_changed;
+
+        for (child, actual_parent) in parent_query.iter_many(children) {
+            assert_eq!(
+                actual_parent.get(), entity,
+                "Malformed hierarchy. This probably means that your hierarchy has been improperly maintained, or contains a cycle"
+            );
+            // SAFETY:
+            // - `child` must have consistent parentage, or the above assertion would panic.
+            // Since `child` is parented to a root entity, the entire hierarchy leading to it is consistent.
+            // - We may operate as if all descendants are consistent, since `propagate_recursive` will panic before
+            //   continuing to propagate if it encounters an entity with inconsistent parentage.
+            // - Since each root entity is unique and the hierarchy is consistent and forest-like,
+            //   other root entities' `propagate_recursive` calls will not conflict with this one.
+            // - Since this is the only place where `transform_query` gets used, there will be no conflicting fetches elsewhere.
+            unsafe {
+                propagate_collider_transforms_recursive(
+                    &collider_transform,
+                    &transform_query,
+                    &parent_query,
+                    child,
+                    changed || actual_parent.is_changed(),
                 );
-                let child_transform = ColliderTransform::from(*child_transform);
-
-                // SAFETY:
-                // - `child` must have consistent parentage, or the above assertion would panic.
-                // Since `child` is parented to a root entity, the entire hierarchy leading to it is consistent.
-                // - We may operate as if all descendants are consistent, since `propagate_collider_transform_recursive` will panic before
-                //   continuing to propagate if it encounters an entity with inconsistent parentage.
-                // - Since each root entity is unique and the hierarchy is consistent and forest-like,
-                //   other root entities' `propagate_collider_transform_recursive` calls will not conflict with this one.
-                // - Since this is the only place where `transform_query` gets used, there will be no conflicting fetches elsewhere.
-                unsafe {
-                    propagate_collider_transforms_recursive(
-                        if is_child_rb {
-                            ColliderTransform {
-                                scale: child_transform.scale,
-                                ..default()
-                            }
-                        } else {
-                            let transform = ColliderTransform::from(*transform);
-
-                            ColliderTransform {
-                                translation: transform.scale * child_transform.translation,
-                                rotation: child_transform.rotation,
-                                scale: (transform.scale * child_transform.scale).max(Vector::splat(Scalar::EPSILON)),
-                            }
-                        },
-                        &collider_query,
-                        &parent_query,
-                        child,
-                        transform.is_changed() || parent.is_changed()
-                    );
-                }
             }
-        },
-    );
+        }
+    }
 }
 
 /// Recursively computes the [`ColliderTransform`] for `entity` and all of its descendants
@@ -298,97 +298,81 @@ pub(crate) fn propagate_collider_transforms(
 /// is well-formed and must remain as a tree or a forest. Each entity must have at most one parent.
 #[allow(clippy::type_complexity)]
 unsafe fn propagate_collider_transforms_recursive(
-    transform: ColliderTransform,
-    collider_query: &Query<
-        (
-            Ref<Transform>,
-            Option<&mut ColliderTransform>,
-            Option<&Children>,
-        ),
+    parent: &ColliderTransform,
+    transform_query: &Query<
+        (Ref<Transform>, &mut ColliderTransform, Option<&Children>),
         With<Parent>,
     >,
-    parent_query: &Query<(Entity, Ref<Transform>, Has<RigidBody>, Ref<Parent>)>,
+    parent_query: &Query<(Entity, Ref<Parent>)>,
     entity: Entity,
     mut changed: bool,
 ) {
-    let children = {
-        // SAFETY: This call cannot create aliased mutable references.
-        //   - The top level iteration parallelizes on the roots of the hierarchy.
-        //   - The caller ensures that each child has one and only one unique parent throughout the entire
-        //     hierarchy.
-        //
-        // For example, consider the following malformed hierarchy:
-        //
-        //     A
-        //   /   \
-        //  B     C
-        //   \   /
-        //     D
-        //
-        // D has two parents, B and C. If the propagation passes through C, but the Parent component on D points to B,
-        // the above check will panic as the origin parent does match the recorded parent.
-        //
-        // Also consider the following case, where A and B are roots:
-        //
-        //  A       B
-        //   \     /
-        //    C   D
-        //     \ /
-        //      E
-        //
-        // Even if these A and B start two separate tasks running in parallel, one of them will panic before attempting
-        // to mutably access E.
-        let Ok((transform_ref, collider_transform, children)) =
-            (unsafe { collider_query.get_unchecked(entity) })
-        else {
-            return;
-        };
+    let (global_matrix, children) = {
+        let Ok((transform, mut collider_transform, children)) =
+            // SAFETY: This call cannot create aliased mutable references.
+            //   - The top level iteration parallelizes on the roots of the hierarchy.
+            //   - The caller ensures that each child has one and only one unique parent throughout the entire
+            //     hierarchy.
+            //
+            // For example, consider the following malformed hierarchy:
+            //
+            //     A
+            //   /   \
+            //  B     C
+            //   \   /
+            //     D
+            //
+            // D has two parents, B and C. If the propagation passes through C, but the Parent component on D points to B,
+            // the above check will panic as the origin parent does match the recorded parent.
+            //
+            // Also consider the following case, where A and B are roots:
+            //
+            //  A       B
+            //   \     /
+            //    C   D
+            //     \ /
+            //      E
+            //
+            // Even if these A and B start two separate tasks running in parallel, one of them will panic before attempting
+            // to mutably access E.
+            (unsafe { transform_query.get_unchecked(entity) }) else {
+                return;
+            };
 
-        changed |= transform_ref.is_changed();
+        changed |= transform.is_changed();
         if changed {
-            if let Some(mut collider_transform) = collider_transform {
-                if *collider_transform != transform {
-                    *collider_transform = transform;
+            *collider_transform = {
+                let translation = parent.transform_point(transform.translation.as_dvec3());
+                let rotation = parent.rotation.0 * transform.rotation.adjust_precision();
+                let scale = parent.scale * transform.scale.adjust_precision();
+                ColliderTransform {
+                    translation,
+                    rotation: Rotation(rotation),
+                    scale,
                 }
-            }
+            };
         }
-
-        children
+        (*collider_transform, children)
     };
 
     let Some(children) = children else { return };
-    for (child, child_transform, is_rb, parent) in parent_query.iter_many(children) {
+    for (child, actual_parent) in parent_query.iter_many(children) {
         assert_eq!(
-            parent.get(), entity,
+            actual_parent.get(), entity,
             "Malformed hierarchy. This probably means that your hierarchy has been improperly maintained, or contains a cycle"
         );
-
-        let child_transform = ColliderTransform::from(*child_transform);
-
         // SAFETY: The caller guarantees that `transform_query` will not be fetched
-        // for any descendants of `entity`, so it is safe to call `propagate_collider_transforms_recursive` for each child.
+        // for any descendants of `entity`, so it is safe to call `propagate_recursive` for each child.
         //
         // The above assertion ensures that each child has one and only one unique parent throughout the
         // entire hierarchy.
         unsafe {
             propagate_collider_transforms_recursive(
-                if is_rb {
-                    ColliderTransform {
-                        scale: child_transform.scale,
-                        ..default()
-                    }
-                } else {
-                    ColliderTransform {
-                        translation: transform.transform_point(child_transform.translation),
-                        rotation: Rotation(transform.rotation.0 * child_transform.rotation.0),
-                        scale: (transform.scale * child_transform.scale)
-                            .max(Vector::splat(Scalar::EPSILON)),
-                    }
-                },
-                collider_query,
+                &global_matrix,
+                transform_query,
                 parent_query,
                 child,
-                changed || parent.is_changed(),
+                changed || actual_parent.is_changed(),
             );
         }
     }
@@ -506,7 +490,7 @@ fn position_to_transform<P: GridPrecision>(
     >,
     mut entities: Query<
         (&mut Transform, &mut GridCell<P>, Ref<Position>, &Rotation),
-        Without<FloatingOrigin>,
+        (Without<FloatingOrigin>, Without<Parent>),
     >,
 ) {
     let Ok((mut origin_transform, origin_cell, origin_position, origin_rotation)) =
