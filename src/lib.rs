@@ -337,7 +337,10 @@ pub fn update_global_from_grid<P: GridPrecision>(
         Query<(&Transform, &mut GlobalTransform, &GridCell<P>)>,
     )>,
 ) {
-    let origin_cell = origin.single();
+    let Ok(origin_cell) = origin.get_single() else {
+        warn!("No floating origin found.");
+        return;
+    };
 
     if origin_cell.is_changed() {
         let mut all_entities = entities.p1();
