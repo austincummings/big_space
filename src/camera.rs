@@ -176,7 +176,9 @@ pub fn nearest_objects<T: GridPrecision>(
     objects: Query<(Entity, &GridCell<T>, &Transform, &Aabb)>,
     mut camera: Query<(&mut CameraController, &GridCell<T>, &Transform)>,
 ) {
-    let (mut camera, cam_cell, cam_transform) = camera.single_mut();
+    let Ok((mut camera, cam_cell, cam_transform)) = camera.get_single_mut() else {
+        return;
+    };
     let nearest_object = objects
         .iter()
         .map(|(entity, cell, obj_transform, aabb)| {
