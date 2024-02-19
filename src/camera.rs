@@ -147,20 +147,20 @@ impl CameraInput {
 
 /// Provides sensible keyboard and mouse input defaults
 pub fn default_camera_inputs(
-    keyboard: Res<Input<KeyCode>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut mouse_move: EventReader<MouseMotion>,
     mut cam: ResMut<CameraInput>,
 ) {
-    keyboard.pressed(KeyCode::W).then(|| cam.forward -= 1.0);
-    keyboard.pressed(KeyCode::S).then(|| cam.forward += 1.0);
-    keyboard.pressed(KeyCode::A).then(|| cam.right -= 1.0);
-    keyboard.pressed(KeyCode::D).then(|| cam.right += 1.0);
+    keyboard.pressed(KeyCode::KeyW).then(|| cam.forward -= 1.0);
+    keyboard.pressed(KeyCode::KeyS).then(|| cam.forward += 1.0);
+    keyboard.pressed(KeyCode::KeyA).then(|| cam.right -= 1.0);
+    keyboard.pressed(KeyCode::KeyD).then(|| cam.right += 1.0);
     keyboard.pressed(KeyCode::Space).then(|| cam.up += 1.0);
     keyboard
         .pressed(KeyCode::ControlLeft)
         .then(|| cam.up -= 1.0);
-    keyboard.pressed(KeyCode::Q).then(|| cam.roll += 1.0);
-    keyboard.pressed(KeyCode::E).then(|| cam.roll -= 1.0);
+    keyboard.pressed(KeyCode::KeyQ).then(|| cam.roll += 1.0);
+    keyboard.pressed(KeyCode::KeyE).then(|| cam.roll -= 1.0);
     keyboard
         .pressed(KeyCode::ShiftLeft)
         .then(|| cam.boost = true);

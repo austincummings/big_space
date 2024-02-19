@@ -32,7 +32,7 @@ const DISTANCE: i128 = 20_000_000;
 /// disabling the plugin. Normally you would make your active camera the floating origin to avoid
 /// this issue.
 fn toggle_plugin(
-    input: Res<Input<KeyCode>>,
+    input: Res<ButtonInput<KeyCode>>,
     settings: Res<big_space::FloatingOriginSettings>,
     mut text: Query<&mut Text>,
     mut disabled: Local<bool>,
@@ -129,8 +129,8 @@ fn setup_scene(
     // plugin isn't used.
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(UVSphere::default().into()),
-            material: materials.add(Color::RED.into()),
+            mesh: meshes.add(Sphere::new(1.0).mesh()),
+            material: materials.add(Color::RED),
             transform: Transform::from_scale(Vec3::splat(10000.0)),
             ..default()
         },
